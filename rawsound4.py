@@ -4,6 +4,112 @@ import struct
 import sys
 import random
 
+import rawsound_handclap
+
+def filter_enclose():
+#http://jaggedplanet.com/iir/iir-explorer.asp
+#chebyshev
+#low-pass
+#order = 2
+#fs  =44100
+#cutoff = 1000
+#ripple = 0.1
+
+  NPOLE = 2
+  NZERO = 2
+  ac = [0.8403838701730075,-1.824007818250394,1]
+  bc =[1,2,1]
+  gain=247.0067692744004
+  xv = [0,0,0]
+  yv = [0,0,0]
+
+  '''  
+#chebyshev
+#band-pass
+#order = 2
+#fs  =44100
+#cutoff = 6000
+#ripple = 0.1
+#width = 1000
+
+  NPOLE=4
+  NZERO=4
+  ac=[0.8399557427681004,-2.305225002040346,3.4096106527408647,-2.5158421933802773,1]
+  bc=[1,0,-2,0,1]
+  gain=245.5284638846673
+  xv=[0,0,0,0,0]
+  yv=[0,0,0,0,0]
+
+#band-pass
+#order = 4
+#fs  =44100
+#cutoff = 4000
+#ripple = 0.1
+#width = 1000
+  NPOLE = 8
+  NZERO = 8
+  ac =  [0.8077759712003454,-5.590283701780115,17.91167575505413,-34.40852161929764,43.214553172503194,-36.295619142575816,19.930151118211555,-6.561265254086744,1]
+  bc = [1,0,-4,0,6,0,-4,0,1]
+  gain = 110357.91104134671
+  xv = [0,0,0,0,0,0,0,0,0]
+  yv = [0,0,0,0,0,0,0,0,0]
+  '''
+
+  def applyfilter(v):
+    out = 0.0
+
+    for i in range(NZERO):
+      xv[i] = xv[i+1]
+    xv[NZERO] = v/gain
+  
+    for i in range(NPOLE):
+      yv[i] = yv[i+1]
+
+    for i in range(NZERO):
+      out += xv[i] * bc[i]
+    
+    for i in range(NPOLE):
+      out -= yv[i] * ac[i]
+
+    #feedback 
+    yv[NPOLE] = out
+
+    return out
+
+  return applyfilter
+
+#noise is generated at 100kHz?
+def pn_enclose():
+  pn = 0xf
+  def pn909():
+    nonlocal pn
+    b0 = 0x01 & (pn >> 12)
+    b1 = 0x01 & (pn >> 30)
+    xb = 0x01 & (b0+b1)
+  
+    pn = pn<<1
+    pn = pn | xb
+
+    ob = ((pn>>35) & 0x01)
+    if ob==0:
+      ob = -1
+    else:
+      ob = 1 
+    return ob
+  return pn909
+
+pn909 = pn_enclose() 
+filter1000 = filter_enclose()
+
+def scaled_noise(n,s): 
+  noise = []
+  for i in range(n):
+    noise.append(pn909() * s)
+
+  return noise
+
+print(scaled_noise(200,32))
+
 file_path = "bass.raw"
 
 # Maximum value for a signed integer with one byte.
@@ -159,7 +265,11 @@ for t in range(samples_count):
     hard = 6
     hard = 7
     hard = 4 #was 2
-    sample = sample + hard*random.random()
+    #sample = sample + hard*random.random()
+    pn_noise = filter1000(hard*pn909())
+    #sample = sample + 8*pn909()
+    
+    sample = sample + pn_noise
 
     sample = math.floor(sample * env[t])
     #added gain and limit
@@ -189,8 +299,13 @@ for i in range(900):
     samples[29000+i]=0
 '''
   
-esamples = samples[9000:30000]
+hc = rawsound_handclap.handclap()
+sd = rawsound_handclap.snaredrum()
 
+esamples = samples[9000:30000]
+esamples.extend(samples[9000:30000])
+esamples.extend(samples[9000:30000])
+#esamples.extend(hc)
 esamples.extend(esamples)
 esamples.extend(esamples)
 esamples.extend(esamples)
